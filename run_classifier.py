@@ -25,6 +25,7 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+import numpy as np
 
 flags = tf.flags
 
@@ -62,7 +63,7 @@ flags.DEFINE_bool(
     "models and False for cased models.")
 
 flags.DEFINE_integer(
-    "max_seq_length", 128,
+    "max_seq_length", 512,
     "The maximum total input sequence length after WordPiece tokenization. "
     "Sequences longer than this will be truncated, and sequences shorter "
     "than this will be padded.")
@@ -127,12 +128,12 @@ flags.DEFINE_integer(
 class InputExample(object):
   """A single training/test example for simple sequence classification."""
 
-  def __init__(self, guid, text_a, text_b=None, label=None):
+  def __init__(self, guid, query, passages=None, label=None):
     """Constructs a InputExample.
 
     Args:
       guid: Unique id for the example.
-      text_a: string. The untokenized text of the first sequence. For single
+      query: string. The untokenized text of the first sequence. For single
         sequence tasks, only this sequence must be specified.
       text_b: (Optional) string. The untokenized text of the second sequence.
         Only must be specified for sequence pair tasks.
@@ -140,8 +141,8 @@ class InputExample(object):
         specified for train and dev examples, but not for test examples.
     """
     self.guid = guid
-    self.text_a = text_a
-    self.text_b = text_b
+    self.query = query
+    self.passages = passages
     self.label = label
 
 
@@ -208,191 +209,21 @@ class MicrosoftProcessor(DataProcessor):
 
   def get_labels(self):
     """See base class."""
-    return ["0", "1"]
+    return ["{}".format(i) for i in range(10)]
 
   def _create_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
     examples = []
     for (i, line) in enumerate(lines):
       guid = "%s-%s" % (set_type, i)
-      text_a = tokenization.convert_to_unicode(line[1].strip())
-      text_b = tokenization.convert_to_unicode(line[2].strip())
+      query = tokenization.convert_to_unicode(line[1].strip())
+      passages = [tokenization.convert_to_unicode(l.strip()) for l in line[2:12]]
       if set_type == "test":
         label = "0"
       else:
-        label = tokenization.convert_to_unicode(line[3])
+        label = tokenization.convert_to_unicode(line[12])
       examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-    return examples
-
-
-class XnliProcessor(DataProcessor):
-  """Processor for the XNLI data set."""
-
-  def __init__(self):
-    self.language = "zh"
-
-  def get_train_examples(self, data_dir):
-    """See base class."""
-    lines = self._read_tsv(
-        os.path.join(data_dir, "multinli",
-                     "multinli.train.%s.tsv" % self.language))
-    examples = []
-    for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
-      guid = "train-%d" % (i)
-      text_a = tokenization.convert_to_unicode(line[0])
-      text_b = tokenization.convert_to_unicode(line[1])
-      label = tokenization.convert_to_unicode(line[2])
-      if label == tokenization.convert_to_unicode("contradictory"):
-        label = tokenization.convert_to_unicode("contradiction")
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-    return examples
-
-  def get_dev_examples(self, data_dir):
-    """See base class."""
-    lines = self._read_tsv(os.path.join(data_dir, "xnli.dev.tsv"))
-    examples = []
-    for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
-      guid = "dev-%d" % (i)
-      language = tokenization.convert_to_unicode(line[0])
-      if language != tokenization.convert_to_unicode(self.language):
-        continue
-      text_a = tokenization.convert_to_unicode(line[6])
-      text_b = tokenization.convert_to_unicode(line[7])
-      label = tokenization.convert_to_unicode(line[1])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-    return examples
-
-  def get_labels(self):
-    """See base class."""
-    return ["contradiction", "entailment", "neutral"]
-
-
-class MnliProcessor(DataProcessor):
-  """Processor for the MultiNLI data set (GLUE version)."""
-
-  def get_train_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-  def get_dev_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "dev_matched.tsv")),
-        "dev_matched")
-
-  def get_test_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "test_matched.tsv")), "test")
-
-  def get_labels(self):
-    """See base class."""
-    return ["contradiction", "entailment", "neutral"]
-
-  def _create_examples(self, lines, set_type):
-    """Creates examples for the training and dev sets."""
-    examples = []
-    for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
-      guid = "%s-%s" % (set_type, tokenization.convert_to_unicode(line[0]))
-      text_a = tokenization.convert_to_unicode(line[8])
-      text_b = tokenization.convert_to_unicode(line[9])
-      if set_type == "test":
-        label = "contradiction"
-      else:
-        label = tokenization.convert_to_unicode(line[-1])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-    return examples
-
-
-class MrpcProcessor(DataProcessor):
-  """Processor for the MRPC data set (GLUE version)."""
-
-  def get_train_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-  def get_dev_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
-
-  def get_test_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
-
-  def get_labels(self):
-    """See base class."""
-    return ["0", "1"]
-
-  def _create_examples(self, lines, set_type):
-    """Creates examples for the training and dev sets."""
-    examples = []
-    for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
-      guid = "%s-%s" % (set_type, i)
-      text_a = tokenization.convert_to_unicode(line[3])
-      text_b = tokenization.convert_to_unicode(line[4])
-      if set_type == "test":
-        label = "0"
-      else:
-        label = tokenization.convert_to_unicode(line[0])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-    return examples
-
-
-class ColaProcessor(DataProcessor):
-  """Processor for the CoLA data set (GLUE version)."""
-
-  def get_train_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-  def get_dev_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
-
-  def get_test_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
-
-  def get_labels(self):
-    """See base class."""
-    return ["0", "1"]
-
-  def _create_examples(self, lines, set_type):
-    """Creates examples for the training and dev sets."""
-    examples = []
-    for (i, line) in enumerate(lines):
-      # Only the test set has a header
-      if set_type == "test" and i == 0:
-        continue
-      guid = "%s-%s" % (set_type, i)
-      if set_type == "test":
-        text_a = tokenization.convert_to_unicode(line[1])
-        label = "0"
-      else:
-        text_a = tokenization.convert_to_unicode(line[3])
-        label = tokenization.convert_to_unicode(line[1])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+          InputExample(guid=guid, query=query, passages=passages, label=label))
     return examples
 
 
@@ -403,31 +234,25 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
   for (i, label) in enumerate(label_list):
     label_map[label] = i
 
-  tokens_a = tokenizer.tokenize(example.text_a)
-  tokens_b = None
-  if example.text_b:
-    tokens_b = tokenizer.tokenize(example.text_b)
+  tokens_query = tokenizer.tokenize(example.query)
+  tokens_passage = [tokenizer.tokenize(tokens) for tokens in example.passages]
 
-  if tokens_b:
-    # Modifies `tokens_a` and `tokens_b` in place so that the total
-    # length is less than the specified length.
-    # Account for [CLS], [SEP], [SEP] with "- 3"
-    _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
-  else:
-    # Account for [CLS] and [SEP] with "- 2"
-    if len(tokens_a) > max_seq_length - 2:
-      tokens_a = tokens_a[0:(max_seq_length - 2)]
+  # Modifies `tokens_query` and `tokens_passage` in place so that the total
+  # length is less than the specified length.
+  # Account for [CLS], [SEP] x 11 with "-12"
+  _truncate_seq_pair(tokens_query, tokens_passage, max_seq_length - 12)
 
   # The convention in BERT is:
-  # (a) For sequence pairs:
+  # For sequence pairs:
   #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
   #  type_ids: 0     0  0    0    0     0       0 0     1  1  1  1   1 1
-  # (b) For single sequences:
-  #  tokens:   [CLS] the dog is hairy . [SEP]
-  #  type_ids: 0     0   0   0  0     0 0
+  # For our task, where we want to classify between 10 passages given 1 query:
+  #  tokens:   [CLS] query [SEP] passage1 [SEP] passage2 [SEP] passage3 [SEP]
+  #            passage4 [SEP] passage5 [SEP] passage6 [SEP] passage7 [SEP]
+  #            passage8 [SEP] passage9 [SEP] passage10 [SEP]
   #
-  # Where "type_ids" are used to indicate whether this is the first
-  # sequence or the second sequence. The embedding vectors for `type=0` and
+  # Where "type_ids" are used to indicate whether this is the query
+  # or the passages. The embedding vectors for `type=0` and
   # `type=1` were learned during pre-training and are added to the wordpiece
   # embedding vector (and position vector). This is not *strictly* necessary
   # since the [SEP] token unambiguously separates the sequences, but it makes
@@ -440,14 +265,14 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
   segment_ids = []
   tokens.append("[CLS]")
   segment_ids.append(0)
-  for token in tokens_a:
+  for token in tokens_query:
     tokens.append(token)
     segment_ids.append(0)
   tokens.append("[SEP]")
   segment_ids.append(0)
 
-  if tokens_b:
-    for token in tokens_b:
+  for passage in tokens_passage:
+    for token in passage:
       tokens.append(token)
       segment_ids.append(1)
     tokens.append("[SEP]")
@@ -562,7 +387,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
   return input_fn
 
 
-def _truncate_seq_pair(tokens_a, tokens_b, max_length):
+def _truncate_seq_pair(tokens_query, tokens_passage, max_length):
   """Truncates a sequence pair in place to the maximum length."""
 
   # This is a simple heuristic which will always truncate the longer sequence
@@ -570,13 +395,15 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
   # of tokens from each, since if one sequence is very short then each token
   # that's truncated likely contains more information than a longer sequence.
   while True:
-    total_length = len(tokens_a) + len(tokens_b)
+    lengths = [len(tokens_query)] + [len(tokens) for tokens in tokens_passage]
+    total_length = sum(lengths)
     if total_length <= max_length:
       break
-    if len(tokens_a) > len(tokens_b):
-      tokens_a.pop()
+    max_idx = np.argmax(lengths)
+    if max_idx == 0:
+      tokens_query.pop()
     else:
-      tokens_b.pop()
+      tokens_passage[max_idx - 1].pop()
 
 
 def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
@@ -614,10 +441,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     logits = tf.matmul(output_layer, output_weights, transpose_b=True)
     logits = tf.nn.bias_add(logits, output_bias)
     probabilities = tf.nn.softmax(logits, axis=-1)
-
-    class_weight = tf.constant([0.1, 0.9])
-    weighted_logits = tf.multiply(logits, class_weight)
-    log_probs = tf.nn.log_softmax(weighted_logits, axis=-1)
+    log_probs = tf.nn.log_softmax(logits, axis=-1)
 
     one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
 
@@ -787,10 +611,6 @@ def main(_):
 
   processors = {
       "microsoft": MicrosoftProcessor,
-      "cola": ColaProcessor,
-      "mnli": MnliProcessor,
-      "mrpc": MrpcProcessor,
-      "xnli": XnliProcessor,
   }
 
   if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:
@@ -854,8 +674,7 @@ def main(_):
       use_tpu=FLAGS.use_tpu,
       use_one_hot_embeddings=FLAGS.use_tpu)
 
-  # If TPU is not available, this will fall back to normal Estimator on CPU
-  # or GPU.
+  # If TPU is not available, this will fall back to normal Estimator on CPU or GPU.
   estimator = tf.contrib.tpu.TPUEstimator(
       use_tpu=FLAGS.use_tpu,
       model_fn=model_fn,
